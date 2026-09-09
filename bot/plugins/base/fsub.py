@@ -17,6 +17,7 @@ from bot.utilities.helpers import (
 )
 from bot.utilities.pyrofilters import PyroFilters
 from bot.utilities.pyrofilters.subscription import SubscriptionFilter
+from bot.utilities.pyrotools import HelpCmd
 
 
 class ForceSubCommand:
@@ -297,24 +298,25 @@ async def fsub_clear_handler(
         )
 
     return await ForceSubCommand.clear_channels(message)
-    
+
+
 HelpCmd.set_help(
     command="fsub_add",
-    description=fsub_add.__doc__,
+    description=fsub_add_handler.__doc__,
     allow_global=True,
     allow_non_admin=False,
 )
 
 HelpCmd.set_help(
     command="fsub_remove",
-    description=fsub_remove.__doc__,
+    description=fsub_remove_handler.__doc__,
     allow_global=True,
     allow_non_admin=False,
 )
 
 HelpCmd.set_help(
     command="fsub_list",
-    description=fsub_list.__doc__,
+    description=fsub_list_handler.__doc__,
     allow_global=True,
     allow_non_admin=False,
 )
