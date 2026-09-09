@@ -301,6 +301,30 @@ class MongoDB(Moderation, Listener):
         ).to_list(length=None)
 
         return result[0] if result else None
+        
+    async def get_link_by_backup_message_id(
+        self,
+        message_id: int,
+        backup_channel: int,
+    ) -> tuple[str, dict] | None:
+        """Find an existing link by backup-channel message ID."""
+        collection = self.files_db["Files"]
+
+        result = await collection.find_one(
+            {
+                "file_origin": backup_channel,
+                "files": {
+                    "$elemMatch": {
+                        "message_id": message_id,
+                    },
+                },
+            },
+        )
+
+        if not result:
+            return None
+
+        return str(result["_id"]), result
 
     async def get_expired_temporary_links(
         self,

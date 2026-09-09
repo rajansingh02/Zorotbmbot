@@ -297,3 +297,24 @@ async def fsub_clear_handler(
         )
 
     return await ForceSubCommand.clear_channels(message)
+    
+HelpCmd.set_help(
+    command="fsub_add",
+    description=fsub_add.__doc__,
+    allow_global=True,
+    allow_non_admin=False,
+)
+
+HelpCmd.set_help(
+    command="fsub_remove",
+    description=fsub_remove.__doc__,
+    allow_global=True,
+    allow_non_admin=False,
+)
+
+HelpCmd.set_help(
+    command="fsub_list",
+    description=fsub_list.__doc__,
+    allow_global=True,
+    allow_non_admin=False,
+)

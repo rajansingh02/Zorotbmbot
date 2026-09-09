@@ -258,8 +258,7 @@ class MakeFilesCommand:
             files_to_store = [
                 {
                     k: v
-                    for k, v in file
-                    .items()
+                    for k, v in file.items()
                     if k != "file_name"
                 }
                 for file in cached_files
@@ -360,6 +359,32 @@ class MakeFilesCommand:
             quote=True,
             reply_markup=reply_markup,
             disable_web_page_preview=True,
+        )
+
+    @classmethod
+    async def handle_cancel(
+        cls,
+        client: Client,
+        message: ConvoMessage,
+    ) -> Message:
+        """Cancel the active file-link conversation."""
+        unique_id = message.chat.id + message.from_user.id
+
+        if unique_id not in cls.files_cache:
+            return await cls.message_reply(
+                client=client,
+                message=message,
+                text="No active file session found.",
+                quote=True,
+            )
+
+        cls.files_cache.pop(unique_id, None)
+
+        return await cls.message_reply(
+            client=client,
+            message=message,
+            text="❌ File creation cancelled.",
+            quote=True,
         )
 
     @classmethod
@@ -542,6 +567,7 @@ class MakeFilesCommand:
             "/batch_link",
             "/temp_link",
         ],
+        convo_cancel="/cancel",
     ),
 )
 async def make_files_command_handler(
@@ -553,11 +579,17 @@ async def make_files_command_handler(
     **Usage:**
         /make_files: initiate a permanent-link conversation.
         /make_link: finish a permanent-link conversation.
-        /templink: initiate a temporary-link conversation.
-        /temp_link: finish a temporary-link conversation and choose expiry.
+        /templink: initiate a temporary-link conversation and choose expiry.
+        /cancel: cancel the active file-link conversation.
     """
     if message.convo_start:
         return await MakeFilesCommand.handle_convo_start(
+            client=client,
+            message=message,
+        )
+
+    if message.convo_cancel:
+        return await MakeFilesCommand.handle_cancel(
             client=client,
             message=message,
         )
