@@ -23,11 +23,17 @@ from pydantic_settings.sources import SettingsError
 from typing_extensions import TypedDict
 
 logger = logging.getLogger(__name__)
-MongoSRVDsn = Annotated[MultiHostUrl, UrlConstraints(allowed_schemes=["mongodb+srv"])]
+
+MongoSRVDsn = Annotated[
+    MultiHostUrl,
+    UrlConstraints(allowed_schemes=["mongodb+srv"]),
+]
+
 BASE_PATH = Path(__file__).parent.parent
 
 
 class ChannelInfo(TypedDict):
+    title: str
     is_private: bool
     invite_link: str
     channel_id: int
@@ -48,8 +54,14 @@ class Config(BaseSettings):
     BOT_SESSION: str = "Zaws-File-Share"
     BOT_MAX_MESSAGE_CACHE_SIZE: int = 100
 
+    # MongoDB
+    # Cluster 2: everything except Files
     MONGO_DB_URL: MongoSRVDsn
     MONGO_DB_NAME: str = "Zaws-File-Share"
+
+    # Cluster 1: Files only
+    MONGO_FILES_DB_URL: MongoSRVDsn
+    MONGO_FILES_DB_NAME: str = "Zaws-File-Share"
 
     # Bot main config
     RATE_LIMITER: bool = True
@@ -76,8 +88,11 @@ class Config(BaseSettings):
 
     @field_validator("channels_n_invite", mode="before")
     @classmethod
-    def ignore_keys(cls, value: dict[str, ChannelInfo]) -> dict[str, ChannelInfo]:
-        """Ignored configuration keys for runtime injection"""
+    def ignore_keys(
+        cls,
+        value: dict[str, ChannelInfo],
+    ) -> dict[str, ChannelInfo]:
+        """Ignored configuration keys for runtime injection."""
         return {}
 
     @classmethod

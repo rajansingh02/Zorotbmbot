@@ -26,7 +26,11 @@ class ConversationFilter:
                 A filter function that can be used with Update Handlers
         """
 
-        async def func(flt: filters.Filter, client: Client, message: Message) -> bool:  # noqa: ARG001
+        async def func(
+            flt: filters.Filter,
+            client: Client,
+            message: Message,
+        ) -> bool:  # noqa: ARG001
             """Checks if user is currently in conversation."""
             unique_id = message.chat.id + message.from_user.id
             return unique_id not in cls._convo_cache
@@ -49,10 +53,14 @@ class ConversationFilter:
 
         Returns:
             filters.Filter:
-                A filter function that can be used with Update Handlers.
+                A filter function that can be used with Update Handlers
         """
 
-        async def func(flt: filters.Filter, client: Client, message: ConvoMessage) -> bool:  # noqa: ARG001
+        async def func(
+            flt: filters.Filter,
+            client: Client,
+            message: ConvoMessage,
+        ) -> bool:  # noqa: ARG001
             text = message.text or message.caption
             unique_id = message.chat.id + message.from_user.id
 
@@ -60,10 +68,18 @@ class ConversationFilter:
             message.conversation = False
             message.convo_stop = False
 
-            convo_start_check = convo_start if isinstance(convo_start, list | set) else [convo_start]
+            convo_start_check = (
+                convo_start
+                if isinstance(convo_start, list | set)
+                else [convo_start]
+            )
 
             if convo_stop is not None:
-                convo_stop_check = convo_stop if isinstance(convo_stop, list | set) else [convo_stop]
+                convo_stop_check = (
+                    convo_stop
+                    if isinstance(convo_stop, list | set)
+                    else [convo_stop]
+                )
             else:
                 convo_stop_check = []
 
@@ -72,7 +88,11 @@ class ConversationFilter:
                 cls._convo_cache.add(unique_id)
                 return True
 
-            if text and unique_id in cls._convo_cache and text in convo_stop_check:
+            if (
+                text
+                and unique_id in cls._convo_cache
+                and text in convo_stop_check
+            ):
                 message.convo_stop = True
                 cls._convo_cache.discard(unique_id)
                 return True

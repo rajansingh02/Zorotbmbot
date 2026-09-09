@@ -5,7 +5,12 @@ from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from bot.config import config
 from bot.database import MongoDB
 from bot.options import options
-from bot.utilities.helpers import DataEncoder, DataValidationError, PyroHelper, RateLimiter
+from bot.utilities.helpers import (
+    DataEncoder,
+    DataValidationError,
+    PyroHelper,
+    RateLimiter,
+)
 from bot.utilities.pyrofilters import PyroFilters, SubscriptionMessage
 from bot.utilities.pyrotools import FileResolverModel, HelpCmd, Pyrotools
 from bot.utilities.schedule_manager import schedule_manager
@@ -24,7 +29,7 @@ class FileSender:
         codex_message_ids: list[int],
         chat_id: int,
         from_chat_id: int,
-        protect_content: bool,  # noqa: FBT001
+        protect_content: bool,
     ) -> list[Message]:
         all_sent_files = []
 
@@ -41,7 +46,11 @@ class FileSender:
         else:
             codex_message_ids_chunk = [
                 codex_message_ids[i : i + FileSender.forward_limit_size]
-                for i in range(0, len(codex_message_ids), FileSender.forward_limit_size)
+                for i in range(
+                    0,
+                    len(codex_message_ids),
+                    FileSender.forward_limit_size,
+                )
             ]
 
             for codex_files in codex_message_ids_chunk:
@@ -52,7 +61,11 @@ class FileSender:
                     hide_sender_name=True,
                     protect_content=protect_content,
                 )
-                all_sent_files.extend(send_files) if isinstance(send_files, list) else all_sent_files.append(send_files)
+
+                if isinstance(send_files, list):
+                    all_sent_files.extend(send_files)
+                else:
+                    all_sent_files.append(send_files)
 
         return all_sent_files
 
@@ -62,7 +75,7 @@ class FileSender:
         chat_id: int,
         file_data: list[FileResolverModel],
         file_origin: int,
-        protect_content: bool,  # noqa: FBT001
+        protect_content: bool,
     ) -> list[Message]:
         all_sent_files = []
 
@@ -75,10 +88,15 @@ class FileSender:
                 protect_content=protect_content,
             )
             all_sent_files.append(send_files)
+
         else:
             file_data_chunk = [
                 file_data[i : i + FileSender.forward_limit_size]
-                for i in range(0, len(file_data), FileSender.forward_limit_size)
+                for i in range(
+                    0,
+                    len(file_data),
+                    FileSender.forward_limit_size,
+                )
             ]
 
             for i_file_data in file_data_chunk:
@@ -89,7 +107,12 @@ class FileSender:
                     file_origin=file_origin,
                     protect_content=protect_content,
                 )
-                all_sent_files.extend(send_files) if isinstance(send_files, list) else all_sent_files.append(send_files)
+
+                if isinstance(send_files, list):
+                    all_sent_files.extend(send_files)
+                else:
+                    all_sent_files.append(send_files)
+
         return all_sent_files
 
 
@@ -97,7 +120,7 @@ class FileSender:
     filters.command("start") & filters.private & PyroFilters.subscription(),
     group=0,
 )
-@RateLimiter.hybrid_limiter(func_count=1)
+@RateLimiter.daily_file_limiter
 async def file_start(
     client: Client,
     message: Message,
@@ -109,14 +132,19 @@ async def file_start(
         /start [optional file_link]
     """
     if not message.command[1:]:
-        await PyroHelper.option_message(client=client, message=message, option_key=options.settings.START_MESSAGE)
+        await PyroHelper.option_message(
+            client=client,
+            message=message,
+            option_key=options.settings.START_MESSAGE,
+        )
         return message.stop_propagation()
 
-    # shouldn't overwrite existing id it already exists
     await database.add_user(user_id=message.from_user.id)
 
     base64_file_link = message.text.split(maxsplit=1)[1]
-    file_document = await database.get_link_document(base64_file_link=base64_file_link)
+    file_document = await database.get_link_document(
+        base64_file_link=base64_file_link,
+    )
 
     if not file_document:
         try:
@@ -139,6 +167,7 @@ async def file_start(
             from_chat_id=config.BACKUP_CHANNEL,
             protect_content=config.PROTECT_CONTENT,
         )
+
         if not send_files:
             await PyroHelper.option_message(
                 client=client,
@@ -146,9 +175,13 @@ async def file_start(
                 option_key=options.settings.FILE_DOES_NOT_EXIST,
             )
             return message.stop_propagation()
+
     else:
         file_origin = file_document["file_origin"]
-        file_data = [FileResolverModel(**file) for file in file_document["files"]]
+        file_data = [
+            FileResolverModel(**file)
+            for file in file_document["files"]
+        ]
 
         send_files = await FileSender.teleshare(
             client=client,
@@ -161,6 +194,7 @@ async def file_start(
     delete_n_seconds = options.settings.AUTO_DELETE_SECONDS
 
     additional_message = None
+
     if options.settings.ADDITIONAL_MESSAGE != 0:
         additional_message = await PyroHelper.option_message(
             client=client,
@@ -172,15 +206,19 @@ async def file_start(
         schedule_delete_message = [msg.id for msg in send_files]
 
         auto_delete_message = (
-            options.settings.AUTO_DELETE_MESSAGE.format(int(delete_n_seconds / 60))
+            options.settings.AUTO_DELETE_MESSAGE.format(
+                int(delete_n_seconds / 60),
+            )
             if not isinstance(options.settings.AUTO_DELETE_MESSAGE, int)
             else options.settings.AUTO_DELETE_MESSAGE
         )
+
         auto_delete_message_reply = await PyroHelper.option_message(
             client=client,
             message=message,
             option_key=auto_delete_message,
         )
+
         if auto_delete_message_reply:
             schedule_delete_message.append(auto_delete_message_reply.id)
 
@@ -198,7 +236,10 @@ async def file_start(
     return message.stop_propagation()
 
 
-@Client.on_message(filters.command("start") & filters.private, group=69)
+@Client.on_message(
+    filters.command("start") & filters.private,
+    group=69,
+)
 @RateLimiter.hybrid_limiter(func_count=1)
 async def return_start(
     client: Client,
@@ -218,19 +259,79 @@ async def return_start(
     channels_n_invite = config.channels_n_invite
     buttons = []
 
-    for channel, channel_info in channels_n_invite.items():
-        buttons.append([InlineKeyboardButton(text=channel, url=channel_info["invite_link"])])
+    for channel_info in channels_n_invite.values():
+        title = channel_info["title"]
 
-    if message.command[1:]:
-        link = f"https://t.me/{client.me.username}?start={message.command[1]}"  # type: ignore[reportOptionalMemberAccess]
-        buttons.append([InlineKeyboardButton(text="Try Again", url=link)])
+        # Keep the complete button text within 25 visible characters.
+        if len(title) > 22:
+            title = f"{title[:22]}..."
 
-    return await PyroHelper.option_message(
-        client=client,
-        message=message,
-        option_key=options.settings.FORCE_SUB_MESSAGE,
-        reply_markup=InlineKeyboardMarkup(buttons),
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text=f"📢 {title}",
+                    url=channel_info["invite_link"],
+                ),
+            ],
+        )
+
+    # Extract the original /start payload.
+    start_parameter = None
+
+    if message.text:
+        parts = message.text.split(maxsplit=1)
+
+        if len(parts) == 2:
+            start_parameter = parts[1].strip()
+
+    # IMPORTANT:
+    # Always add Try Again AFTER all channel buttons.
+    if start_parameter:
+        bot_username = client.me.username
+
+        if bot_username:
+            buttons.append(
+                [
+                    InlineKeyboardButton(
+                        text="✅ Try Again",
+                        url=(
+                            f"https://t.me/{bot_username}"
+                            f"?start={start_parameter}"
+                        ),
+                    ),
+                ],
+            )
+
+    reply_markup = (
+        InlineKeyboardMarkup(buttons)
+        if buttons
+        else None
     )
+
+    force_sub_message = options.settings.FORCE_SUB_MESSAGE
+
+    # Send the force-sub message directly instead of passing the
+    # keyboard through PyroHelper.option_message().
+    if isinstance(force_sub_message, int):
+        message_origin = await client.get_messages(
+            chat_id=config.BACKUP_CHANNEL,
+            message_ids=force_sub_message,
+        )
+
+        if message_origin:
+            return await message_origin.copy(
+                chat_id=message.chat.id,
+                reply_markup=reply_markup,
+            )
+
+    try:
+        return await message.reply(
+            text=str(force_sub_message),
+            reply_markup=reply_markup,
+            quote=True,
+        )
+    except Exception:
+        return None
 
 
 HelpCmd.set_help(
