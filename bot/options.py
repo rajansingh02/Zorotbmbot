@@ -21,6 +21,15 @@ class SettingsModel(BaseModel):
         AUTO_DELETE_SECONDS (int): The number of seconds to wait before deleting a file, set to 0 to disable.
         GLOBAL_MODE (bool): Whether the bot is in global mode.
         BACKUP_FILES (bool): Whether to backup files.
+
+        GBCAST_GROUP_ID (int): The chat ID /gbcast posts announcements to, set to 0 to disable.
+        GBCAST_TEMPLATE (str): Preset announcement text for /gbcast. Every `[]` is replaced with
+            the name typed after the command, e.g. `/gbcast Interstellar`.
+        GBCAST_COOLDOWN_SECONDS (int): Minimum seconds between two /gbcast uses by the same admin.
+
+        DAILY_FILE_LIMIT (int): Max file links a non-admin user may request in the rolling window below.
+        DAILY_FILE_LIMIT_WINDOW_SECONDS (int): Length of the rolling window for DAILY_FILE_LIMIT.
+        RATE_LIMIT_PER_MINUTE (int): Max command executions per minute allowed from the same chat.
     """
 
     FORCE_SUB_MESSAGE: str | int = "Please join the channel(s) first."
@@ -37,6 +46,16 @@ class SettingsModel(BaseModel):
     AUTO_DELETE_SECONDS: int = 300
     GLOBAL_MODE: bool = False
     BACKUP_FILES: bool = True
+
+    GBCAST_GROUP_ID: int = 0
+    GBCAST_TEMPLATE: str = (
+        '[] has been uploaded in the respective channel.\n\nType Movie "[]" to get the movie.'
+    )
+    GBCAST_COOLDOWN_SECONDS: int = 30
+
+    DAILY_FILE_LIMIT: int = 20
+    DAILY_FILE_LIMIT_WINDOW_SECONDS: int = 86400
+    RATE_LIMIT_PER_MINUTE: int = 25
 
 
 class InvalidValueError(Exception):

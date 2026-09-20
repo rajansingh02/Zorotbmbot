@@ -9,6 +9,7 @@ class ConvoMessage(Message):
     def __init__(self) -> None:
         self.convo_start = False
         self.convo_stop = False
+        self.convo_cancel = False
         self.conversation = False
 
 
@@ -26,7 +27,11 @@ class ConversationFilter:
                 A filter function that can be used with Update Handlers
         """
 
-        async def func(flt: filters.Filter, client: Client, message: Message) -> bool:  # noqa: ARG001
+        async def func(
+            flt: filters.Filter,
+            client: Client,
+            message: Message,
+        ) -> bool:  # noqa: ARG001
             """Checks if user is currently in conversation."""
             unique_id = message.chat.id + message.from_user.id
             return unique_id not in cls._convo_cache
@@ -38,6 +43,7 @@ class ConversationFilter:
         cls,
         convo_start: str | list | set,
         convo_stop: str | list | set | None = None,
+        convo_cancel: str | list | set | None = None,
     ) -> filters.Filter:
         """Create a filter function for a conversation.
 
@@ -46,33 +52,70 @@ class ConversationFilter:
                 The starting text or texts for the conversation.
             convo_stop (str | list | set | None):
                 The text or texts to stop the conversation. Defaults to None.
+            convo_cancel (str | list | set | None):
+                The text or texts to cancel the conversation. Defaults to None.
 
         Returns:
             filters.Filter:
-                A filter function that can be used with Update Handlers.
+                A filter function that can be used with Update Handlers
         """
 
-        async def func(flt: filters.Filter, client: Client, message: ConvoMessage) -> bool:  # noqa: ARG001
+        async def func(
+            flt: filters.Filter,
+            client: Client,
+            message: ConvoMessage,
+        ) -> bool:  # noqa: ARG001
             text = message.text or message.caption
             unique_id = message.chat.id + message.from_user.id
 
             message.convo_start = False
-            message.conversation = False
             message.convo_stop = False
+            message.convo_cancel = False
+            message.conversation = False
 
-            convo_start_check = convo_start if isinstance(convo_start, list | set) else [convo_start]
+            convo_start_check = (
+                convo_start
+                if isinstance(convo_start, list | set)
+                else [convo_start]
+            )
 
             if convo_stop is not None:
-                convo_stop_check = convo_stop if isinstance(convo_stop, list | set) else [convo_stop]
+                convo_stop_check = (
+                    convo_stop
+                    if isinstance(convo_stop, list | set)
+                    else [convo_stop]
+                )
             else:
                 convo_stop_check = []
+
+            if convo_cancel is not None:
+                convo_cancel_check = (
+                    convo_cancel
+                    if isinstance(convo_cancel, list | set)
+                    else [convo_cancel]
+                )
+            else:
+                convo_cancel_check = []
 
             if text and text in convo_start_check:
                 message.convo_start = True
                 cls._convo_cache.add(unique_id)
                 return True
 
-            if text and unique_id in cls._convo_cache and text in convo_stop_check:
+            if (
+                text
+                and unique_id in cls._convo_cache
+                and text in convo_cancel_check
+            ):
+                message.convo_cancel = True
+                cls._convo_cache.discard(unique_id)
+                return True
+
+            if (
+                text
+                and unique_id in cls._convo_cache
+                and text in convo_stop_check
+            ):
                 message.convo_stop = True
                 cls._convo_cache.discard(unique_id)
                 return True
