@@ -11,6 +11,7 @@ from pyrogram.types import Message
 
 from bot.config import config
 from bot.database import MongoDB
+from bot.options import options
 
 
 class RateLimiter:
@@ -21,6 +22,11 @@ class RateLimiter:
 
     The daily file limiter is persistent and stores its data in the
     normal MongoDB cluster (MONGO_DB_URL), never in the Files cluster.
+
+    All numeric limits below are read live from `options.settings` (configurable
+    via /option, e.g. `/option RATE_LIMIT_PER_MINUTE 40`) so they can be tuned
+    without a restart. The class vars are only used as a fallback default before
+    settings are loaded from the database.
     """
 
     logger = logging.getLogger(__name__)
@@ -45,11 +51,13 @@ class RateLimiter:
 
         Should only be run once during startup.
         """
-        exec_per_min = cls.MAX_EXECUTIONS_PER_MINUTE_SAME_CHAT
-
         cls.logger.info("cooldown_limiter Started...")
 
         while True:
+            # Re-read every cycle so a live /option change takes effect
+            # without a restart.
+            exec_per_min = options.settings.RATE_LIMIT_PER_MINUTE
+
             current_time = time.perf_counter()
 
             if current_time - cls.last_minute_reset >= 60:
@@ -116,6 +124,9 @@ class RateLimiter:
 
                 user_dict = cls.chat_execution_counts[chat_id]
 
+                # Configurable via /option RATE_LIMIT_PER_MINUTE <n>.
+                max_per_minute = options.settings.RATE_LIMIT_PER_MINUTE
+
                 now = time.perf_counter()
                 elapsed_time_minute = (
                     now - cls.last_minute_reset
@@ -123,7 +134,7 @@ class RateLimiter:
 
                 if (
                     user_dict["exec"]
-                    >= cls.MAX_EXECUTIONS_PER_MINUTE_SAME_CHAT
+                    >= max_per_minute
                 ):
                     cls.chat_execution_counts[chat_id]["queue"] += (
                         func_count
@@ -133,7 +144,7 @@ class RateLimiter:
 
                     sleep_queue = (
                         user_dict["queue"]
-                        // cls.MAX_EXECUTIONS_PER_MINUTE_SAME_CHAT
+                        // max_per_minute
                     ) + 1
 
                     total_sleep = (
@@ -199,15 +210,20 @@ class RateLimiter:
                 )
 
             user_id = message.from_user.id
-            
+
             if user_id in config.ROOT_ADMINS_ID:
                 return await func(client, message, *args, **kwargs)
+
+            # Configurable via /option DAILY_FILE_LIMIT <n> and
+            # /option DAILY_FILE_LIMIT_WINDOW_SECONDS <n>.
+            daily_limit = options.settings.DAILY_FILE_LIMIT
+            window_seconds = options.settings.DAILY_FILE_LIMIT_WINDOW_SECONDS
 
             allowed, count, reset_at = (
                 await cls.database.check_daily_file_limit(
                     user_id=user_id,
-                    limit=cls.DAILY_FILE_LIMIT,
-                    window_seconds=cls.DAILY_FILE_WINDOW_SECONDS,
+                    limit=daily_limit,
+                    window_seconds=window_seconds,
                 )
             )
 
@@ -236,10 +252,12 @@ class RateLimiter:
                         f"{max(1, remaining_minutes)} minute(s)"
                     )
 
+                window_hours = max(1, window_seconds // 3600)
+
                 await message.reply(
                     "⚠️ **Daily file limit reached.**\n\n"
-                    "You can use up to **20 file links "
-                    "every 24 hours**.\n\n"
+                    f"You can use up to **{daily_limit} file links "
+                    f"every {window_hours} hour(s)**.\n\n"
                     f"Try again in approximately **{retry_text}**.",
                     quote=True,
                 )
@@ -250,7 +268,7 @@ class RateLimiter:
                 "Daily file limit: user=%d count=%d/%d",
                 user_id,
                 count,
-                cls.DAILY_FILE_LIMIT,
+                daily_limit,
             )
 
             return await func(
