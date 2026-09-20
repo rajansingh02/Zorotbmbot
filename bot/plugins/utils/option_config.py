@@ -191,9 +191,14 @@ async def option_config_cmd(client: Client, message: Message) -> Message | None:
             values = str(message_id)
 
     try:
+        # str.isdigit() is False for negative numbers, but Telegram group/
+        # supergroup/channel chat IDs are always negative (e.g. -1001234567890),
+        # so they need to be recognised as ints too.
+        is_int_like = values.lstrip("-").isdigit() and values not in {"", "-"}
+
         change_value = (
             int(values)
-            if values.isdigit()
+            if is_int_like
             else BOOLEN_CONVERT.get(values.lower(), values)
         )
 
