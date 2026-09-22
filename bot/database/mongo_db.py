@@ -405,6 +405,110 @@ class MongoDB(Moderation, Listener):
 
         return result.deleted_count
 
+    async def add_ad_channel(
+        self,
+        channel_info: dict,
+    ) -> bool:
+        """Add or update a post/ads channel (used by /mpost) in Cluster 2."""
+
+        collection = self.db["AdChannels"]
+
+        result = await collection.update_one(
+            {"_id": channel_info["channel_id"]},
+            {"$set": channel_info},
+            upsert=True,
+        )
+
+        return result.acknowledged
+
+    async def remove_ad_channel(
+        self,
+        channel_id: int,
+    ) -> bool:
+        """Remove a post/ads channel from Cluster 2."""
+
+        collection = self.db["AdChannels"]
+
+        result = await collection.delete_one(
+            {"_id": channel_id},
+        )
+
+        return result.deleted_count > 0
+
+    async def get_ad_channels(self) -> list[dict]:
+        """Return all configured post/ads channels."""
+
+        collection = self.db["AdChannels"]
+
+        return await collection.find({}).to_list(length=None)
+
+    async def get_ad_channel(
+        self,
+        channel_id: int,
+    ) -> dict | None:
+        """Return one post/ads channel."""
+
+        collection = self.db["AdChannels"]
+
+        return await collection.find_one(
+            {"_id": channel_id},
+        )
+
+    async def clear_ad_channels(self) -> int:
+        """Remove all post/ads channels."""
+
+        collection = self.db["AdChannels"]
+
+        result = await collection.delete_many({})
+
+        return result.deleted_count
+
+    async def save_mpost_preset(
+        self,
+        name: str,
+        template: str,
+    ) -> bool:
+        """Save (or overwrite) a named /mpost button-template preset."""
+
+        collection = self.db["MPostPresets"]
+
+        result = await collection.update_one(
+            {"_id": name},
+            {"$set": {"template": template}},
+            upsert=True,
+        )
+
+        return result.acknowledged
+
+    async def get_mpost_preset(
+        self,
+        name: str,
+    ) -> dict | None:
+        """Return one named /mpost button-template preset."""
+
+        collection = self.db["MPostPresets"]
+
+        return await collection.find_one({"_id": name})
+
+    async def get_mpost_presets(self) -> list[dict]:
+        """Return all saved /mpost button-template presets."""
+
+        collection = self.db["MPostPresets"]
+
+        return await collection.find({}).to_list(length=None)
+
+    async def delete_mpost_preset(
+        self,
+        name: str,
+    ) -> bool:
+        """Delete a named /mpost button-template preset."""
+
+        collection = self.db["MPostPresets"]
+
+        result = await collection.delete_one({"_id": name})
+
+        return result.deleted_count > 0
+
     async def get_user_ids(
         self,
     ) -> tuple[list[int], list[int]]:

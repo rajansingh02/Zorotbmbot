@@ -28,6 +28,9 @@ class SubscriptionFilter:
 
     Successful subscription checks are cached for one hour.
     Failed checks are never cached.
+
+    An active /mpost photo session bypasses FSub because the user
+    has already been authorized to start the /mpost workflow.
     """
 
     logger = logging.getLogger(__name__)
@@ -124,7 +127,35 @@ class SubscriptionFilter:
             message: SubscriptionMessage,
         ) -> bool:  # noqa: ARG001
 
+            if not message.from_user:
+                return False
+
             user_id = message.from_user.id
+
+            # ---------------------------------------------------------
+            # /mpost photo bypass
+            # ---------------------------------------------------------
+            # Once /mpost has created a pending session, the next
+            # private photo belongs to that workflow. Do not run the
+            # normal force-subscription check on that photo.
+            #
+            # Import locally to avoid a circular import during startup.
+            # ---------------------------------------------------------
+            if (
+                message.chat
+                and message.chat.type == "private"
+                and message.photo
+            ):
+                from bot.mpost import MPostCommand
+
+                unique_id = message.chat.id + user_id
+
+                if unique_id in MPostCommand.pending_posts:
+                    cls.logger.info(
+                        "FSUB BYPASS /mpost user=%s",
+                        user_id,
+                    )
+                    return True
 
             if await database.is_user_banned(user_id):
                 message.user_is_banned = True
