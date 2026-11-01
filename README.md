@@ -37,9 +37,10 @@ Use: `/help [command name]` for more informations.
 this command may take awhile depending on user count.
 4. `/option`: Use to configure database options. See [bot options](#bot-options) for more informations.
 5. `/delete_link`: Delete an accessible link from the database and delete the corresponding file from the backup channel.
-6. Auto link generation: just forward or send a file directly to the bot.
-7. `/range_files`: Fetch files directly from backup channel to create a sharable link of ranged file ids.
-8. `/ban` and `/unban`: Bans a user from using the bot.
+6. `/edit_link`: Add or remove files behind an existing link without changing its URL. Use `/remove_file [number]` to remove files and `/preview_edit` to review and confirm changes.
+7. Auto link generation: just forward or send a file directly to the bot.
+8. `/range_files`: Fetch files directly from backup channel to create a sharable link of ranged file ids.
+9. `/ban` and `/unban`: Bans a user from using the bot.
 
 #### Frequently Asked Questions
 <details>

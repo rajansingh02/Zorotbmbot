@@ -19,6 +19,16 @@ class ConversationFilter:
     _convo_cache: ClassVar[set[int]] = set()
 
     @classmethod
+    def activate_conversation(cls, unique_id: int) -> None:
+        """Mark a private chat as being in a conversation."""
+        cls._convo_cache.add(unique_id)
+
+    @classmethod
+    def deactivate_conversation(cls, unique_id: int) -> None:
+        """Remove a private chat from the active-conversation set."""
+        cls._convo_cache.discard(unique_id)
+
+    @classmethod
     def user_not_in_conversation(cls) -> filters.Filter:
         """Create a filter function for the given check_on_convo.
 
@@ -99,7 +109,7 @@ class ConversationFilter:
 
             if text and text in convo_start_check:
                 message.convo_start = True
-                cls._convo_cache.add(unique_id)
+                cls.activate_conversation(unique_id)
                 return True
 
             if (
@@ -108,7 +118,7 @@ class ConversationFilter:
                 and text in convo_cancel_check
             ):
                 message.convo_cancel = True
-                cls._convo_cache.discard(unique_id)
+                cls.deactivate_conversation(unique_id)
                 return True
 
             if (
@@ -117,7 +127,7 @@ class ConversationFilter:
                 and text in convo_stop_check
             ):
                 message.convo_stop = True
-                cls._convo_cache.discard(unique_id)
+                cls.deactivate_conversation(unique_id)
                 return True
 
             if unique_id in cls._convo_cache:
