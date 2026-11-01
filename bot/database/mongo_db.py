@@ -280,6 +280,27 @@ class MongoDB(Moderation, Listener):
 
         return result.deleted_count > 0
 
+    async def update_link_document(
+        self,
+        base64_file_link: str,
+        file_data: list[dict[str, str | int | None]],
+        file_origin: int,
+        expected_files: list[dict],
+    ) -> bool:
+        """Update a link only when its files have not changed since it was read."""
+        collection = self.files_db["Files"]
+
+        result = await collection.update_one(
+            filter={
+                "_id": base64_file_link,
+                "file_origin": file_origin,
+                "files": expected_files,
+            },
+            update={"$set": {"files": file_data}},
+        )
+
+        return result.modified_count > 0
+
     async def get_link_document(
         self,
         base64_file_link: str,
