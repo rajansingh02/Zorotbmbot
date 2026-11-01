@@ -105,11 +105,37 @@ async def resolve_backup_file_link(
     return message_id, None
 
 
+# Only options that represent messages are allowed to resolve
+# Telegram bot file links.
+#
+# IMPORTANT:
+# MPOST_DEFAULT_PRESET is intentionally NOT here.
+#
+# /option MPOST_DEFAULT_PRESET test
+# must save the literal string "test".
+MESSAGE_LINK_OPTIONS = {
+    "FORCE_SUB_MESSAGE",
+    "START_MESSAGE",
+    "ADDITIONAL_MESSAGE",
+    "USER_REPLY_TEXT",
+    "CUSTOM_CAPTION",
+    "AUTO_DELETE_MESSAGE",
+    "INVALID_LINK_MESSAGE",
+    "FILE_DOES_NOT_EXIST",
+    "BANNED_USER_MESSAGE",
+}
+
+
 @Client.on_message(
-    filters.private & PyroFilters.admin() & filters.command(["option", "settings"]),
+    filters.private
+    & PyroFilters.admin()
+    & filters.command(["option", "settings"]),
 )
 @RateLimiter.hybrid_limiter(func_count=1)
-async def option_config_cmd(client: Client, message: Message) -> Message | None:  # noqa: ARG001
+async def option_config_cmd(
+    client: Client,
+    message: Message,
+) -> Message | None:
     """Use to configure database options.
 
     **Usage:**
@@ -124,29 +150,43 @@ async def option_config_cmd(client: Client, message: Message) -> Message | None:
 
     cmd = message.command
 
+    # /option
     if not cmd[1:]:
         options_configs = options.settings.model_dump()
+
         format_options = "\n".join(
             f"**{key}** ```\n{value}```"
             for key, value in options_configs.items()
         )
+
         func_doc = option_config_cmd.__doc__
 
         return await message.reply(
-            text=f"{format_options}\n\n{cleandoc(func_doc) if func_doc else ''}",
+            text=(
+                f"{format_options}\n\n"
+                f"{cleandoc(func_doc) if func_doc else ''}"
+            ),
             quote=True,
         )
 
     key = cmd[1].upper()
 
+    # /option KEY without a value or reply.
     if len(cmd) == MISSING_ARGUMENT and not message.reply_to_message:
         return await message.reply(
             text=f"missing arguments:\n{option_config_cmd.__doc__}",
             quote=True,
         )
 
+    # Validate option name.
     if key not in options.settings.__fields__:
-        return await message.reply("Please use a valid key to edit")
+        return await message.reply(
+            "Please use a valid key to edit",
+        )
+
+    # ---------------------------------------------------------
+    # Get the supplied value
+    # ---------------------------------------------------------
 
     if message.reply_to_message:
         values = (
@@ -155,27 +195,44 @@ async def option_config_cmd(client: Client, message: Message) -> Message | None:
             else None
         )
 
+        # If the replied message does not contain a numeric value,
+        # copy it to the backup channel and store its message ID.
         if not values or not values.isdigit():
-            copyied_mssg = await message.reply_to_message.copy(
+            copied_message = await message.reply_to_message.copy(
                 chat_id=config.BACKUP_CHANNEL,
             )
+
             values = str(
-                copyied_mssg.id
-                if isinstance(copyied_mssg, Message)
+                copied_message.id
+                if isinstance(copied_message, Message)
                 else values
             )
-    else:
-        # Messages next to option command.
-        values = message.text.markdown.split(maxsplit=2)[2].lstrip()
 
-    # Allow existing bot file links to be used for message-type options.
+    else:
+        # Everything after /option KEY is the value.
+        values = message.text.markdown.split(
+            maxsplit=2,
+        )[2].lstrip()
+
+    # ---------------------------------------------------------
+    # Resolve existing Telegram file links
+    # ---------------------------------------------------------
     #
-    # Example:
-    # /option START_MESSAGE https://t.me/YourBot?start=ABC123
+    # This MUST NOT happen for every string setting.
     #
-    # The link is resolved to the existing backup-channel message ID.
-    # No new message is copied to the backup channel.
-    if isinstance(getattr(options.settings, key), str):
+    # For example:
+    #
+    # /option MPOST_DEFAULT_PRESET test
+    #
+    # must remain:
+    #
+    # MPOST_DEFAULT_PRESET = "test"
+    #
+    # Only message-related options are allowed to resolve
+    # Telegram bot file links.
+    # ---------------------------------------------------------
+
+    if key in MESSAGE_LINK_OPTIONS:
         message_id, error = await resolve_backup_file_link(
             client=client,
             value=values,
@@ -190,11 +247,22 @@ async def option_config_cmd(client: Client, message: Message) -> Message | None:
         if message_id is not None:
             values = str(message_id)
 
+    # ---------------------------------------------------------
+    # Convert value to the appropriate basic type
+    # ---------------------------------------------------------
+
     try:
-        # str.isdigit() is False for negative numbers, but Telegram group/
-        # supergroup/channel chat IDs are always negative (e.g. -1001234567890),
-        # so they need to be recognised as ints too.
-        is_int_like = values.lstrip("-").isdigit() and values not in {"", "-"}
+        # Recognise both positive and negative integers.
+        #
+        # Examples:
+        #   123
+        #   -1001234567890
+        #
+        # Do not treat "" or "-" as integers.
+        is_int_like = (
+            values.lstrip("-").isdigit()
+            and values not in {"", "-"}
+        )
 
         change_value = (
             int(values)
@@ -210,8 +278,8 @@ async def option_config_cmd(client: Client, message: Message) -> Message | None:
         options_configs = update.model_dump()
 
         format_options = "\n".join(
-            f"**{key}** ```\n{value}```"
-            for key, value in options_configs.items()
+            f"**{option_key}** ```\n{value}```"
+            for option_key, value in options_configs.items()
         )
 
         final_message = await message.reply(

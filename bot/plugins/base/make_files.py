@@ -260,6 +260,8 @@ class MakeFilesCommand:
             for i in cls.files_cache[unique_id]["files"]
         )
 
+        reply_markup = None
+
         if cls.files_cache[unique_id]["mode"] == "temporary":
             extra_message = (
                 "> Send more files to continue.\n"
@@ -269,7 +271,23 @@ class MakeFilesCommand:
             extra_message = (
                 ">File list truncated.\n"
                 "- Send more files to continue.\n"
-                "- Use /make_link for a shareable link."
+                "- Use /make_link for a shareable link, or /mpost to "
+                "also turn it into a channel post.\n"
+                "- Or just tap a button below."
+            )
+            reply_markup = InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "🔗 Get Link",
+                            callback_data=f"mf_get_link:{message.from_user.id}",
+                        ),
+                        InlineKeyboardButton(
+                            "🖼 Make Post",
+                            callback_data=f"mf_make_post:{message.from_user.id}",
+                        ),
+                    ],
+                ],
             )
 
         return await cls.message_reply(
@@ -277,6 +295,7 @@ class MakeFilesCommand:
             message=message,
             text=f"```\nFile(s):\n{file_names[-3000:]}\n```\n{extra_message}",
             quote=True,
+            reply_markup=reply_markup,
         )
 
     @classmethod
@@ -480,25 +499,31 @@ class MakeFilesCommand:
         return file_link
 
     @classmethod
-    async def handle_convo_stop(
+    async def finalize_link(
         cls,
         client: Client,
-        message: ConvoMessage,
-    ) -> Message:
+        message: Message,
+        unique_id: int,
+    ) -> tuple[str | None, Message | None]:
         """
-        Handle the end of a permanent-link conversation.
+        Finalize a permanent-mode session into a stored file link.
+
+        Shared by the /make_link text command and the "Get Link" /
+        "Make Post" buttons, so both paths behave identically.
 
         Parameters:
             client (Client): The client instance.
-            message (ConvoMessage): The conversation message.
+            message (Message): A message in the same chat as the session
+                (used only for its chat ID and for replying on failure).
+            unique_id (int): The session's cache key, computed by the caller.
 
         Returns:
-            Message: The replied message.
+            A tuple of (file_link, error_reply). Exactly one is None:
+            on success file_link is set; on failure error_reply is the
+            message already sent to the user explaining what happened.
         """
-        unique_id = message.chat.id + message.from_user.id
-
         if unique_id not in cls.files_cache:
-            return await cls.message_reply(
+            return None, await cls.message_reply(
                 client=client,
                 message=message,
                 text="No active file session found.",
@@ -523,7 +548,7 @@ class MakeFilesCommand:
 
         # A temporary session must be finalized through /temp_link.
         if cls.files_cache[unique_id]["mode"] == "temporary":
-            return await cls.show_temp_expiry_buttons(
+            return None, await cls.show_temp_expiry_buttons(
                 client=client,
                 message=message,
             )
@@ -538,12 +563,41 @@ class MakeFilesCommand:
             cls.files_cache.pop(unique_id, None)
             cls.edit_cache.pop(unique_id, None)
 
-            return await cls.message_reply(
+            return None, await cls.message_reply(
                 client=client,
                 message=message,
                 text="No file inputs, stopping task.",
                 quote=True,
             )
+
+        return file_link, None
+
+    @classmethod
+    async def handle_convo_stop(
+        cls,
+        client: Client,
+        message: ConvoMessage,
+    ) -> Message:
+        """
+        Handle the end of a permanent-link conversation.
+
+        Parameters:
+            client (Client): The client instance.
+            message (ConvoMessage): The conversation message.
+
+        Returns:
+            Message: The replied message.
+        """
+        unique_id = message.chat.id + message.from_user.id
+
+        file_link, error = await cls.finalize_link(
+            client=client,
+            message=message,
+            unique_id=unique_id,
+        )
+
+        if error is not None:
+            return error
 
         link = (
             f"https://t.me/{client.me.username}?start={file_link}"
@@ -567,6 +621,42 @@ class MakeFilesCommand:
             quote=True,
             reply_markup=reply_markup,
             disable_web_page_preview=True,
+        )
+
+    @classmethod
+    async def handle_mpost_stop(
+        cls,
+        client: Client,
+        message: ConvoMessage,
+    ) -> Message:
+        """
+        Finalize the session via /mpost and hand off to the post-composer.
+
+        Parameters:
+            client (Client): The client instance.
+            message (ConvoMessage): The conversation message.
+
+        Returns:
+            Message: The replied message.
+        """
+        unique_id = message.chat.id + message.from_user.id
+
+        file_link, error = await cls.finalize_link(
+            client=client,
+            message=message,
+            unique_id=unique_id,
+        )
+
+        if error is not None:
+            return error
+
+        from bot.plugins.base.mpost import MPostCommand  # noqa: PLC0415
+
+        return await MPostCommand.begin(
+            client=client,
+            message=message,
+            unique_id=unique_id,
+            file_link=file_link,  # type: ignore[reportArgumentType]
         )
 
     @classmethod
@@ -1216,7 +1306,6 @@ class MakeFilesCommand:
 @Client.on_message(
     filters.private
     & PyroFilters.admin(allow_global=True)
-    & PyroFilters.subscription()
     & PyroFilters.create_conversation_filter(
         convo_start=[
             "/make_files",
@@ -1229,6 +1318,7 @@ class MakeFilesCommand:
             "/make_link",
             "/batch_link",
             "/temp_link",
+            "/mpost",
             "/preview_edit",
         ],
         convo_cancel="/cancel",
@@ -1243,6 +1333,8 @@ async def make_files_command_handler(
     **Usage:**
         /make_files: initiate a permanent-link conversation.
         /make_link: finish a permanent-link conversation.
+        /mpost: finish a permanent-link conversation and compose a
+            channel-ready post (photo + caption + buttons) with it.
         /templink: initiate a temporary-link conversation and choose expiry.
         /edit_link: edit files behind an existing link.
         /preview_edit: review pending changes and save them.
@@ -1267,12 +1359,131 @@ async def make_files_command_handler(
         )
 
     if message.convo_stop:
+        stop_text = message.text or message.caption or ""
+
+        if stop_text.strip() == "/mpost":
+            return await MakeFilesCommand.handle_mpost_stop(
+                client=client,
+                message=message,
+            )
+
         return await MakeFilesCommand.handle_convo_stop(
             client=client,
             message=message,
         )
 
     return None
+
+
+@Client.on_callback_query(
+    filters.regex(r"^mf_get_link:\d+$"),
+)
+async def mf_get_link_callback(
+    client: Client,
+    callback_query: CallbackQuery,
+) -> None:
+    """Handle the "Get Link" button shown while sending files."""
+    try:
+        _, user_id_text = callback_query.data.split(":", 1)
+        user_id = int(user_id_text)
+    except (AttributeError, ValueError):
+        await callback_query.answer("Invalid request.", show_alert=True)
+        return
+
+    if callback_query.from_user.id != user_id:
+        await callback_query.answer(
+            "This button belongs to another user.",
+            show_alert=True,
+        )
+        return
+
+    unique_id = callback_query.message.chat.id + user_id
+
+    await callback_query.answer("Creating link...")
+
+    file_link, error = await MakeFilesCommand.finalize_link(
+        client=client,
+        message=callback_query.message,
+        unique_id=unique_id,
+    )
+
+    if error is not None:
+        return
+
+    link = (
+        f"https://t.me/{client.me.username}?start={file_link}"
+    )  # type: ignore[reportOptionalMemberAccess]
+
+    reply_markup = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "Share URL",
+                    url=f"https://t.me/share/url?url={link}",
+                ),
+            ],
+        ],
+    )
+
+    text = f"Here is your link:\n>{link}"
+
+    try:
+        await callback_query.message.edit_text(
+            text=text,
+            reply_markup=reply_markup,
+            disable_web_page_preview=True,
+        )
+    except Exception:
+        await callback_query.message.reply(
+            text=text,
+            reply_markup=reply_markup,
+            disable_web_page_preview=True,
+        )
+
+
+@Client.on_callback_query(
+    filters.regex(r"^mf_make_post:\d+$"),
+)
+async def mf_make_post_callback(
+    client: Client,
+    callback_query: CallbackQuery,
+) -> None:
+    """Handle the "Make Post" button shown while sending files."""
+    try:
+        _, user_id_text = callback_query.data.split(":", 1)
+        user_id = int(user_id_text)
+    except (AttributeError, ValueError):
+        await callback_query.answer("Invalid request.", show_alert=True)
+        return
+
+    if callback_query.from_user.id != user_id:
+        await callback_query.answer(
+            "This button belongs to another user.",
+            show_alert=True,
+        )
+        return
+
+    unique_id = callback_query.message.chat.id + user_id
+
+    await callback_query.answer("Creating link...")
+
+    file_link, error = await MakeFilesCommand.finalize_link(
+        client=client,
+        message=callback_query.message,
+        unique_id=unique_id,
+    )
+
+    if error is not None:
+        return
+
+    from bot.plugins.base.mpost import MPostCommand  # noqa: PLC0415
+
+    await MPostCommand.begin(
+        client=client,
+        message=callback_query.message,
+        unique_id=unique_id,
+        file_link=file_link,  # type: ignore[reportArgumentType]
+    )
 
 
 @Client.on_callback_query(
